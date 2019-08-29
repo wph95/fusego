@@ -365,6 +365,10 @@ func (fs *memFS) createFile(
 func (fs *memFS) CreateFile(
 	ctx context.Context,
 	op *fuseops.CreateFileOp) (err error) {
+	if op.Metadata.Pid == 0 {
+		// CreateFileOp should have a valid pid in metadata.
+		return fuse.EINVAL
+	}
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
@@ -604,6 +608,11 @@ func (fs *memFS) ReadDir(
 func (fs *memFS) OpenFile(
 	ctx context.Context,
 	op *fuseops.OpenFileOp) (err error) {
+	if op.Metadata.Pid == 0 {
+		// OpenFileOp should have a valid pid in metadata.
+		return fuse.EINVAL
+	}
+
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
@@ -651,6 +660,16 @@ func (fs *memFS) WriteFile(
 	// Serve the request.
 	_, err = inode.WriteAt(op.Data, op.Offset)
 
+	return
+}
+
+func (fs *memFS) FlushFile(
+	ctx context.Context,
+	op *fuseops.FlushFileOp) (err error) {
+	if op.Metadata.Pid == 0 {
+		// FlushFileOp should have a valid pid in metadata.
+		return fuse.EINVAL
+	}
 	return
 }
 

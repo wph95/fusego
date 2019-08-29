@@ -171,9 +171,10 @@ func convertInMessage(
 		name = name[:i]
 
 		o = &fuseops.CreateFileOp{
-			Parent: fuseops.InodeID(inMsg.Header().Nodeid),
-			Name:   string(name),
-			Mode:   convertFileMode(in.Mode),
+			Parent:   fuseops.InodeID(inMsg.Header().Nodeid),
+			Name:     string(name),
+			Mode:     convertFileMode(in.Mode),
+			Metadata: fuseops.OpMetadata{Pid: inMsg.Header().Pid},
 		}
 
 	case fusekernel.OpSymlink:
@@ -256,7 +257,8 @@ func convertInMessage(
 
 	case fusekernel.OpOpen:
 		o = &fuseops.OpenFileOp{
-			Inode: fuseops.InodeID(inMsg.Header().Nodeid),
+			Inode:    fuseops.InodeID(inMsg.Header().Nodeid),
+			Metadata: fuseops.OpMetadata{Pid: inMsg.Header().Pid},
 		}
 
 	case fusekernel.OpOpendir:
@@ -382,8 +384,9 @@ func convertInMessage(
 		}
 
 		o = &fuseops.FlushFileOp{
-			Inode:  fuseops.InodeID(inMsg.Header().Nodeid),
-			Handle: fuseops.HandleID(in.Fh),
+			Inode:    fuseops.InodeID(inMsg.Header().Nodeid),
+			Handle:   fuseops.HandleID(in.Fh),
+			Metadata: fuseops.OpMetadata{Pid: inMsg.Header().Pid},
 		}
 
 	case fusekernel.OpReadlink:
