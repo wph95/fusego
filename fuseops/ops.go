@@ -25,6 +25,8 @@ import (
 
 // OpMetadata contains metadata about the file system operation.
 type OpMetadata struct {
+	Uid uint32
+	Gid uint32
 	// PID of the process that is invoking the operation.
 	Pid uint32
 }
@@ -107,6 +109,9 @@ type StatFSOp struct {
 // Look up a child by name within a parent directory. The kernel sends this
 // when resolving user paths to dentry structs, which are then cached.
 type LookUpInodeOp struct {
+	// Metadata
+	Metadata OpMetadata
+
 	// The ID of the directory inode to which the child belongs.
 	Parent InodeID
 
@@ -434,6 +439,8 @@ type UnlinkOp struct {
 // user-space process. On OS X it may not be sent for every open(2) (cf.
 // https://github.com/osxfuse/osxfuse/issues/199).
 type OpenDirOp struct {
+	// Metadata
+	Metadata OpMetadata
 	// The ID of the inode to be opened.
 	Inode InodeID
 

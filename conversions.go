@@ -33,6 +33,16 @@ import (
 // Incoming messages
 ////////////////////////////////////////////////////////////////////////
 
+// should really be in fusekernel package but that creates
+// a circular import
+func toOpMetadata(h *fusekernel.InHeader) fuseops.OpMetadata {
+	return fuseops.OpMetadata{
+		Uid: h.Uid,
+		Gid: h.Gid,
+		Pid: h.Pid,
+	}
+}
+
 // Convert a kernel message to an appropriate op. If the op is unknown, a
 // special unexported type will be used.
 //
@@ -51,8 +61,9 @@ func convertInMessage(
 		}
 
 		o = &fuseops.LookUpInodeOp{
-			Parent: fuseops.InodeID(inMsg.Header().Nodeid),
-			Name:   string(buf[:n-1]),
+			Parent:   fuseops.InodeID(inMsg.Header().Nodeid),
+			Name:     string(buf[:n-1]),
+			Metadata: toOpMetadata(inMsg.Header()),
 		}
 
 	case fusekernel.OpGetattr:
@@ -174,7 +185,7 @@ func convertInMessage(
 			Parent:   fuseops.InodeID(inMsg.Header().Nodeid),
 			Name:     string(name),
 			Mode:     convertFileMode(in.Mode),
-			Metadata: fuseops.OpMetadata{Pid: inMsg.Header().Pid},
+			Metadata: toOpMetadata(inMsg.Header()),
 		}
 
 	case fusekernel.OpSymlink:
@@ -258,12 +269,13 @@ func convertInMessage(
 	case fusekernel.OpOpen:
 		o = &fuseops.OpenFileOp{
 			Inode:    fuseops.InodeID(inMsg.Header().Nodeid),
-			Metadata: fuseops.OpMetadata{Pid: inMsg.Header().Pid},
+			Metadata: toOpMetadata(inMsg.Header()),
 		}
 
 	case fusekernel.OpOpendir:
 		o = &fuseops.OpenDirOp{
-			Inode: fuseops.InodeID(inMsg.Header().Nodeid),
+			Inode:    fuseops.InodeID(inMsg.Header().Nodeid),
+			Metadata: toOpMetadata(inMsg.Header()),
 		}
 
 	case fusekernel.OpRead:
@@ -386,7 +398,7 @@ func convertInMessage(
 		o = &fuseops.FlushFileOp{
 			Inode:    fuseops.InodeID(inMsg.Header().Nodeid),
 			Handle:   fuseops.HandleID(in.Fh),
-			Metadata: fuseops.OpMetadata{Pid: inMsg.Header().Pid},
+			Metadata: toOpMetadata(inMsg.Header()),
 		}
 
 	case fusekernel.OpReadlink:
