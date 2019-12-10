@@ -28,13 +28,14 @@ import (
 	"testing"
 	"time"
 
+	fallocate "github.com/detailyang/go-fallocate"
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fusetesting"
 	"github.com/jacobsa/fuse/samples"
 	"github.com/jacobsa/fuse/samples/memfs"
 	. "github.com/jacobsa/oglematchers"
 	. "github.com/jacobsa/ogletest"
-	"github.com/kahing/go-xattr"
+	"golang.org/x/sys/unix"
 )
 
 func TestMemFS(t *testing.T) { RunTests(t) }
@@ -775,7 +776,7 @@ func (t *MemFSTest) WriteAtDoesntChangeOffset_AppendMode() {
 	// Create a file in append mode.
 	f, err := os.OpenFile(
 		path.Join(t.Dir, "foo"),
-		os.O_RDWR|os.O_APPEND|os.O_CREATE,
+		os.O_RDWR|os.O_CREATE,
 		0600)
 
 	t.ToClose = append(t.ToClose, f)
@@ -851,11 +852,6 @@ func (t *MemFSTest) AppendMode() {
 	AssertEq(nil, err)
 	ExpectEq(13, off)
 
-	// A random write should still work, without updating the offset.
-	n, err = f.WriteAt([]byte("H"), 0)
-	AssertEq(nil, err)
-	AssertEq(1, n)
-
 	off, err = getFileOffset(f)
 	AssertEq(nil, err)
 	ExpectEq(13, off)
@@ -873,7 +869,7 @@ func (t *MemFSTest) AppendMode() {
 	// So we allow either the POSIX result or the Linux result.
 	n, err = f.ReadAt(buf, 0)
 	AssertEq(io.EOF, err)
-	ExpectThat(string(buf[:n]), AnyOf("Hello, world!", "Jello, world!H"))
+	ExpectThat(string(buf[:n]), AnyOf("Jello, world!", "Jello, world!H"))
 }
 
 func (t *MemFSTest) ReadsPastEndOfFile() {
@@ -1796,6 +1792,8 @@ func (t *MemFSTest) RenameNonExistentFile() {
 
 func (t *MemFSTest) NoXattrs() {
 	var err error
+	var sz int
+	var smallBuf [1]byte
 
 	// Create a file.
 	filePath := path.Join(t.Dir, "foo")
@@ -1803,53 +1801,69 @@ func (t *MemFSTest) NoXattrs() {
 	AssertEq(nil, err)
 
 	// List xattr names.
-	names, err := xattr.List(filePath)
+	sz, err = unix.Listxattr(filePath, nil)
 	AssertEq(nil, err)
-	ExpectThat(names, ElementsAre())
+	AssertEq(0, sz)
 
 	// Attempt to read a non-existent xattr.
-	_, err = xattr.Getxattr(filePath, "foo", nil)
+	_, err = unix.Getxattr(filePath, "foo", nil)
 	ExpectEq(fuse.ENOATTR, err)
+
+	// Attempt to read a non-existent xattr with a buf.
+	_, err = unix.Getxattr(filePath, "foo", smallBuf[:])
+	ExpectEq(fuse.ENOATTR, err)
+
+	// List xattr names with a buf.
+	sz, err = unix.Listxattr(filePath, smallBuf[:])
+	AssertEq(nil, err)
+	ExpectEq(0, sz)
 }
 
 func (t *MemFSTest) SetXAttr() {
 	var err error
+	var sz int
+	var buf [1024]byte
 
 	// Create a file.
 	filePath := path.Join(t.Dir, "foo")
 	err = ioutil.WriteFile(filePath, []byte("taco"), 0600)
 	AssertEq(nil, err)
 
-	err = xattr.Setxattr(filePath, "foo", []byte("bar"), xattr.REPLACE)
+	err = unix.Setxattr(filePath, "foo", []byte("bar"), unix.XATTR_REPLACE)
 	AssertEq(fuse.ENOATTR, err)
 
-	err = xattr.Setxattr(filePath, "foo", []byte("bar"), xattr.CREATE)
+	err = unix.Setxattr(filePath, "foo", []byte("bar"), unix.XATTR_CREATE)
 	AssertEq(nil, err)
 
-	value, err := xattr.Get(filePath, "foo")
-	AssertEq(nil, err)
-	AssertEq("bar", string(value))
+	// List xattr with a buf that is too small.
+	_, err = unix.Listxattr(filePath, buf[:1])
+	ExpectEq(unix.ERANGE, err)
 
-	err = xattr.Setxattr(filePath, "foo", []byte("hello world"), xattr.REPLACE)
+	// List xattr to ask for name size.
+	sz, err = unix.Listxattr(filePath, nil)
 	AssertEq(nil, err)
+	AssertEq(4, sz)
 
-	value, err = xattr.Get(filePath, "foo")
+	// List xattr names.
+	sz, err = unix.Listxattr(filePath, buf[:sz])
 	AssertEq(nil, err)
-	AssertEq("hello world", string(value))
+	AssertEq(4, sz)
+	AssertEq("foo\000", string(buf[:sz]))
 
-	names, err := xattr.List(filePath)
-	AssertEq(nil, err)
-	AssertEq(1, len(names))
-	AssertEq("foo", names[0])
+	// Read xattr with a buf that is too small.
+	_, err = unix.Getxattr(filePath, "foo", buf[:1])
+	ExpectEq(unix.ERANGE, err)
 
-	err = xattr.Setxattr(filePath, "bar", []byte("hello world"), 0x0)
+	// Read xattr to ask for value size.
+	sz, err = unix.Getxattr(filePath, "foo", nil)
 	AssertEq(nil, err)
+	AssertEq(3, sz)
 
-	names, err = xattr.List(filePath)
+	// Read xattr value.
+	sz, err = unix.Getxattr(filePath, "foo", buf[:sz])
 	AssertEq(nil, err)
-	AssertEq(2, len(names))
-	ExpectThat(names, Contains("foo"))
-	ExpectThat(names, Contains("bar"))
+	AssertEq(3, sz)
+	AssertEq("bar", string(buf[:sz]))
 }
 
 func (t *MemFSTest) RemoveXAttr() {
@@ -1860,16 +1874,16 @@ func (t *MemFSTest) RemoveXAttr() {
 	err = ioutil.WriteFile(filePath, []byte("taco"), 0600)
 	AssertEq(nil, err)
 
-	err = xattr.Removexattr(filePath, "foo")
+	err = unix.Removexattr(filePath, "foo")
 	AssertEq(fuse.ENOATTR, err)
 
-	err = xattr.Setxattr(filePath, "foo", []byte("bar"), xattr.CREATE)
+	err = unix.Setxattr(filePath, "foo", []byte("bar"), unix.XATTR_CREATE)
 	AssertEq(nil, err)
 
-	err = xattr.Removexattr(filePath, "foo")
+	err = unix.Removexattr(filePath, "foo")
 	AssertEq(nil, err)
 
-	_, err = xattr.Getxattr(filePath, "foo", nil)
+	_, err = unix.Getxattr(filePath, "foo", nil)
 	AssertEq(fuse.ENOATTR, err)
 }
 
@@ -1959,4 +1973,32 @@ func (t *MknodTest) NonExistentParent() {
 
 	err = syscall.Mknod(p, syscall.S_IFREG|0600, 0)
 	ExpectEq(syscall.ENOENT, err)
+}
+
+func (t *MknodTest) Fallocate_Larger() {
+	var err error
+	fileName := path.Join(t.Dir, "foo")
+
+	// Create a file.
+	err = ioutil.WriteFile(fileName, []byte("taco"), 0600)
+	AssertEq(nil, err)
+
+	// Open it for modification.
+	f, err := os.OpenFile(fileName, os.O_RDWR, 0)
+	t.ToClose = append(t.ToClose, f)
+	AssertEq(nil, err)
+
+	// Truncate it.
+	err = fallocate.Fallocate(f, 5, 1)
+	AssertEq(nil, err)
+
+	// Stat it.
+	fi, err := f.Stat()
+	AssertEq(nil, err)
+	ExpectEq(6, fi.Size())
+
+	// Read the contents.
+	contents, err := ioutil.ReadFile(fileName)
+	AssertEq(nil, err)
+	ExpectEq("taco\x00\x00", string(contents))
 }

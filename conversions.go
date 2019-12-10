@@ -549,6 +549,21 @@ func convertInMessage(
 			Value: value,
 			Flags: in.Flags,
 		}
+	case fusekernel.OpFallocate:
+		type input fusekernel.FallocateIn
+		in := (*input)(inMsg.Consume(unsafe.Sizeof(input{})))
+		if in == nil {
+			err = errors.New("Corrupt OpFallocate")
+			return
+		}
+
+		o = &fuseops.FallocateOp{
+			Inode:  fuseops.InodeID(inMsg.Header().Nodeid),
+			Handle: fuseops.HandleID(in.Fh),
+			Offset: in.Offset,
+			Length: in.Length,
+			Mode:   in.Mode,
+		}
 
 	default:
 		o = &unknownOp{
@@ -590,17 +605,6 @@ func (c *Connection) kernelResponse(
 	// message header.
 	if opErr != nil {
 		handled := false
-
-		if opErr == syscall.ERANGE {
-			switch o := op.(type) {
-			case *fuseops.GetXattrOp:
-				writeXattrSize(m, uint32(o.BytesRead))
-				handled = true
-			case *fuseops.ListXattrOp:
-				writeXattrSize(m, uint32(o.BytesRead))
-				handled = true
-			}
-		}
 
 		if !handled {
 			m.OutHeader().Error = -int32(syscall.EIO)
@@ -780,20 +784,23 @@ func (c *Connection) kernelResponseForOp(
 		// convertInMessage already set up the destination buffer to be at the end
 		// of the out message. We need only shrink to the right size based on how
 		// much the user read.
-		if o.BytesRead == 0 {
+		if len(o.Dst) == 0 {
 			writeXattrSize(m, uint32(o.BytesRead))
 		} else {
 			m.ShrinkTo(buffer.OutMessageHeaderSize + o.BytesRead)
 		}
 
 	case *fuseops.ListXattrOp:
-		if o.BytesRead == 0 {
+		if len(o.Dst) == 0 {
 			writeXattrSize(m, uint32(o.BytesRead))
 		} else {
 			m.ShrinkTo(buffer.OutMessageHeaderSize + o.BytesRead)
 		}
 
 	case *fuseops.SetXattrOp:
+		// Empty response
+
+	case *fuseops.FallocateOp:
 		// Empty response
 
 	case *initOp:
@@ -858,6 +865,9 @@ func convertAttributes(
 		out.Mode |= syscall.S_IFLNK
 	case in.Mode&os.ModeSocket != 0:
 		out.Mode |= syscall.S_IFSOCK
+	}
+	if in.Mode&os.ModeSetuid != 0 {
+		out.Mode |= syscall.S_ISUID
 	}
 }
 

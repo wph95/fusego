@@ -698,7 +698,7 @@ func (fs *memFS) GetXattr(ctx context.Context,
 		op.BytesRead = len(value)
 		if len(op.Dst) >= len(value) {
 			copy(op.Dst, value)
-		} else {
+		} else if len(op.Dst) != 0 {
 			err = syscall.ERANGE
 		}
 	} else {
@@ -722,8 +722,8 @@ func (fs *memFS) ListXattr(ctx context.Context,
 		if err == nil && len(dst) >= keyLen {
 			copy(dst, key)
 			dst = dst[keyLen:]
-		} else {
-			err = syscall.ERANGE
+		} else if len(op.Dst) != 0 {
+			return syscall.ERANGE
 		}
 		op.BytesRead += keyLen
 	}
@@ -770,5 +770,14 @@ func (fs *memFS) SetXattr(ctx context.Context,
 		inode.xattrs[op.Name] = value
 	}
 
+	return
+}
+
+func (fs *memFS) Fallocate(ctx context.Context,
+	op *fuseops.FallocateOp) (err error) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	inode := fs.getInodeOrDie(op.Inode)
+	inode.Fallocate(op.Mode, op.Length, op.Length)
 	return
 }
