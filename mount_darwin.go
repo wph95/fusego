@@ -47,8 +47,6 @@ var (
 			Load:         "/Library/Filesystems/macfuse.fs/Contents/Resources/load_macfuse",
 			Mount:        "/Library/Filesystems/macfuse.fs/Contents/Resources/mount_macfuse",
 			DaemonVar:    "_FUSE_DAEMON_PATH",
-			LibVar:       "_FUSE_CALL_BY_LIB",
-			UseCommFD:    true,
 		},
 		// v3
 		{
