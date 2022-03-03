@@ -37,6 +37,9 @@ type osxfuseInstallation struct {
 	// Environment variable used to pass the path to the executable calling the
 	// mount helper.
 	DaemonVar string
+
+	// Environment variable used to pass the "called by library" flag.
+	LibVar string
 }
 
 var (
@@ -47,6 +50,7 @@ var (
 			Load:         "/Library/Filesystems/macfuse.fs/Contents/Resources/load_macfuse",
 			Mount:        "/Library/Filesystems/macfuse.fs/Contents/Resources/mount_macfuse",
 			DaemonVar:    "_FUSE_DAEMON_PATH",
+			LibVar:       "_FUSE_CALL_BY_LIB",
 		},
 		// v3
 		{
@@ -54,6 +58,7 @@ var (
 			Load:         "/Library/Filesystems/osxfuse.fs/Contents/Resources/load_osxfuse",
 			Mount:        "/Library/Filesystems/osxfuse.fs/Contents/Resources/mount_osxfuse",
 			DaemonVar:    "MOUNT_OSXFUSE_DAEMON_PATH",
+			LibVar:       "MOUNT_OSXFUSE_CALL_BY_LIB",
 		},
 
 		// v2
@@ -62,6 +67,7 @@ var (
 			Load:         "/Library/Filesystems/osxfusefs.fs/Support/load_osxfusefs",
 			Mount:        "/Library/Filesystems/osxfusefs.fs/Support/mount_osxfusefs",
 			DaemonVar:    "MOUNT_FUSEFS_DAEMON_PATH",
+			LibVar:       "MOUNT_FUSEFS_CALL_BY_LIB",
 		},
 	}
 )
@@ -102,6 +108,7 @@ func openOSXFUSEDev(devPrefix string) (dev *os.File, err error) {
 func callMount(
 	bin string,
 	daemonVar string,
+	libVar string,
 	dir string,
 	cfg *MountConfig,
 	dev *os.File,
@@ -137,7 +144,7 @@ func callMount(
 	// OSXFUSE <3.3.0
 	cmd.Env = append(cmd.Env, "MOUNT_FUSEFS_CALL_BY_LIB=")
 	// OSXFUSE >=3.3.0
-	cmd.Env = append(cmd.Env, "MOUNT_OSXFUSE_CALL_BY_LIB=")
+	cmd.Env = append(cmd.Env, libVar+"MOUNT_OSXFUSE_CALL_BY_LIB=")
 
 	daemon := os.Args[0]
 	if daemonVar != "" {
@@ -204,7 +211,7 @@ func mount(
 		}
 
 		// Call the mount binary with the device.
-		if err := callMount(loc.Mount, loc.DaemonVar, dir, cfg, dev, ready); err != nil {
+		if err := callMount(loc.Mount, loc.DaemonVar, loc.LibVar, dir, cfg, dev, ready); err != nil {
 			dev.Close()
 			return nil, fmt.Errorf("callMount: %v", err)
 		}
