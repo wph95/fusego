@@ -141,10 +141,8 @@ func callMount(
 	)
 	cmd.ExtraFiles = []*os.File{dev}
 	cmd.Env = os.Environ()
-	// OSXFUSE <3.3.0
-	cmd.Env = append(cmd.Env, "MOUNT_FUSEFS_CALL_BY_LIB=")
-	// OSXFUSE >=3.3.0
-	cmd.Env = append(cmd.Env, libVar+"MOUNT_OSXFUSE_CALL_BY_LIB=")
+
+	cmd.Env = append(cmd.Env, libVar+"=")
 
 	daemon := os.Args[0]
 	if daemonVar != "" {
